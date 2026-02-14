@@ -1,3 +1,46 @@
+<?php
+$pageTitle = "Register";
+require_once __DIR__ . '/../includes/functions.php';
+if (isLoggedIn()) redirect('public/dashboard.php');
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  if (!csrf_validate($_POST['csrf'] ?? null)) {
+    flash_set('error', 'Security check failed. Please try again.');
+    redirect('public/register.php');
+  }
+
+  $name = sanitize($_POST['name'] ?? '');
+  $email = sanitize($_POST['email'] ?? '');
+  $phone = sanitize($_POST['phone'] ?? '');
+  $accept = isset($_POST['accept_terms']) ? 'yes' : 'no';
+  if ($accept !== 'yes') {
+    flash_set('error', 'You must accept the Terms & Conditions to register.');
+    redirect('public/register.php');
+  }
+  $password = $_POST['password'] ?? '';
+  $confirm = $_POST['confirm_password'] ?? '';
+
+  if ($name==='' || $email==='' || $password==='') {
+    flash_set('error', 'Please fill all required fields.');
+  } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    flash_set('error', 'Invalid email address.');
+  } elseif (strlen($password) < 6) {
+    flash_set('error', 'Password must be at least 6 characters.');
+  } elseif ($password !== $confirm) {
+    flash_set('error', 'Passwords do not match.');
+  } elseif (user_by_email($email)) {
+    flash_set('error', 'Email is already registered.');
+  } else {
+    global $pdo;
+    $hash = password_hash($password, PASSWORD_DEFAULT);
+    $st = $pdo->prepare("INSERT INTO users (name,email,password,phone) VALUES (?,?,?,?)");
+    $st->execute([$name, $email, $hash, $phone ?: null]);
+    flash_set('success', 'Registration successful. Please login.');
+    redirect('public/login.php');
+  }
+}
+include __DIR__ . '/../includes/header.php';
+?>
 <div class="max-w-md mx-auto">
   <div class="glass-strong glow-border border border-white/10 rounded-3xl p-7 md:p-8 reveal overflow-hidden relative">
     <div class="absolute inset-0 opacity-40" style="background: radial-gradient(800px 300px at 10% 0%, rgba(59,130,246,.25), transparent 60%),
@@ -57,3 +100,4 @@
     </div>
   </div>
 </div>
+<?php include __DIR__ . '/../includes/footer.php'; ?>

@@ -1,3 +1,37 @@
+<?php
+$pageTitle = "Login";
+require_once __DIR__ . '/../includes/functions.php';
+if (isLoggedIn()) redirect('public/dashboard.php');
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  if (!csrf_validate($_POST['csrf'] ?? null)) {
+    flash_set('error', 'Security check failed. Please try again.');
+    redirect('public/login.php');
+  }
+
+  $email = sanitize($_POST['email'] ?? '');
+  $password = $_POST['password'] ?? '';
+
+  if ($email==='' || $password==='') {
+    flash_set('error', 'Please enter email and password.');
+  } else {
+    $u = user_by_email($email);
+    if ($u && password_verify($password, $u['password'])) {
+      $_SESSION['user_id'] = $u['id'];
+      $_SESSION['user_name'] = $u['name'];
+      $_SESSION['user_email'] = $u['email'];
+      $_SESSION['user_role'] = $u['role'];
+      $_SESSION['user_phone'] = $u['phone'] ?? '';
+      $_SESSION['user_profile_image'] = $u['profile_image'] ?? '';
+      flash_set('success', 'Welcome back, ' . $u['name'] . '!');
+      redirect($u['role']==='admin' ? 'admin/index.php' : 'public/dashboard.php');
+    } else {
+      flash_set('error', 'Invalid email or password.');
+    }
+  }
+}
+include __DIR__ . '/../includes/header.php';
+?>
 <div class="max-w-md mx-auto">
   <div class="bg-card border border-gray-800 rounded-2xl p-7">
     <h1 class="text-2xl font-bold">Welcome back</h1>
@@ -30,3 +64,4 @@
     </form>
   </div>
 </div>
+<?php include __DIR__ . '/../includes/footer.php'; ?>
