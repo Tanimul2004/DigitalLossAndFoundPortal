@@ -8,6 +8,40 @@ if ($token === '') {
   redirect('public/login.php');
 }
 
+global $pdo;
+$st = $pdo->prepare("SELECT id, reset_expires FROM users WHERE reset_token=?");
+$st->execute([$token]);
+$row = $st->fetch();
+
+if (!$row) {
+  flash_set('error', 'Invalid or expired reset link.');
+  redirect('public/login.php');
+}
+if (empty($row['reset_expires']) || strtotime($row['reset_expires']) < time()) {
+  flash_set('error', 'Reset link expired. Please try again.');
+  redirect('public/forgot_password.php');
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  if (!csrf_validate($_POST['csrf'] ?? null)) {
+    flash_set('error', 'Security check failed.');
+    redirect('public/reset_password.php?token=' . urlencode($token));
+  }
+  $pass = $_POST['password'] ?? '';
+  $confirm = $_POST['confirm_password'] ?? '';
+  if (strlen($pass) < 6) {
+    flash_set('error', 'Password must be at least 6 characters.');
+  } elseif ($pass !== $confirm) {
+    flash_set('error', 'Passwords do not match.');
+  } else {
+    $hash = password_hash($pass, PASSWORD_DEFAULT);
+    $st = $pdo->prepare("UPDATE users SET password=?, reset_token=NULL, reset_expires=NULL WHERE id=?");
+    $st->execute([$hash, $row['id']]);
+    flash_set('success', 'Password updated. Please login.');
+    redirect('public/login.php');
+  }
+}
+
 include __DIR__ . '/../includes/header.php';
 ?>
 <div class="max-w-md mx-auto">
