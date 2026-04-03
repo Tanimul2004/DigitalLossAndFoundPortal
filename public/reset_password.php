@@ -1,4 +1,4 @@
-<?php
+<!-- <?php
 $pageTitle = "Set New Password";
 require_once __DIR__ . '/../includes/functions.php';
 
@@ -65,4 +65,4 @@ include __DIR__ . '/../includes/header.php';
     </form>
   </div>
 </div>
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php include __DIR__ . '/../includes/footer.php'; ?> -->
