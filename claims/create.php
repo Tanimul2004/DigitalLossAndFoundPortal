@@ -1,54 +1,107 @@
+<?php
+$pageTitle = 'Submit Claim';
+require_once __DIR__ . '/../includes/functions.php';
+requireLogin();
 
-<div class="max-w-4xl mx-auto">
-  <nav class="text-sm text-gray-500 mb-4">
-    <a class="hover:text-gray-300" href="<?= BASE_URL ?>items/view.php?id=<?= $itemId ?>">Item</a>
-    <span class="mx-2">/</span>
-    <span class="text-gray-300">Submit Claim</span>
-  </nav>
+$itemId = (int) ($_GET['item_id'] ?? 0);
+$item = getItemById($itemId);
 
-  <h1 class="text-3xl font-extrabold">Submit Claim</h1>
-  <p class="text-gray-400 mt-1">Provide strong proof. Admin will approve one claimant.</p>
+if (!$item || $item['status'] !== 'active' || (int) $item['user_id'] === (int) $_SESSION['user_id']) {
+    redirect('items/search.php');
+}
 
-  <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-2 bg-card border border-gray-800 rounded-2xl p-7">
-        <div class="font-semibold"><?= e($item['title']) ?></div>
-        <div class="text-sm text-gray-400 mt-1">
-          <i class="fa-solid fa-location-dot mr-1"></i><?= e($item['location']) ?>
-          <span class="mx-2">•</span>
-          <?= date('M d, Y', strtotime($item['date_lost_found'])) ?>
-        </div>
-      </div>
+$error = '';
 
-      <form method="post" class="space-y-4">
-        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>" />
-        <div>
-          <label class="text-sm text-gray-300">Claim details *</label>
-          <textarea name="claim_details" required rows="8"
-                    class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:border-primary"
-                    placeholder="Unique marks, serial number, contents, purchase info..."></textarea>
-        </div>
-        <div>
-          <label class="text-sm text-gray-300">Additional proof (optional)</label>
-          <textarea name="proof_docs" rows="4"
-                    class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:border-primary"
-                    placeholder="Receipt number, links, details..."></textarea>
-        </div>
-        <div class="flex items-center justify-between pt-4 border-t border-gray-800">
-          <a class="text-gray-400 hover:text-gray-200" href="<?= BASE_URL ?>items/view.php?id=<?= $itemId ?>"><i class="fa-solid fa-arrow-left mr-2"></i>Back</a>
-          <button class="bg-primary hover:bg-blue-700 font-semibold px-6 py-3 rounded-xl">
-            <i class="fa-solid fa-paper-plane mr-2"></i>Submit Claim
-          </button>
-        </div>
-      </form>
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
+        $error = 'Invalid request.';
+    } else {
+        try {
+            createClaim([
+                'item_id' => (int) $item['id'],
+                'user_id' => (int) $_SESSION['user_id'],
+                'claim_details' => sanitize($_POST['claim_details'] ?? ''),
+                'proof_docs' => sanitize($_POST['proof_docs'] ?? ''),
+                'claimed_brand' => sanitize($_POST['claimed_brand'] ?? ''),
+                'claimed_color' => sanitize($_POST['claimed_color'] ?? ''),
+                'claimed_serial' => sanitize($_POST['claimed_serial'] ?? ''),
+                'claimed_location' => sanitize($_POST['claimed_location'] ?? ''),
+                'claimed_date' => sanitize($_POST['claimed_date'] ?? ''),
+                'identifying_marks' => sanitize($_POST['identifying_marks'] ?? ''),
+            ]);
+
+            flash('success', 'Claim submitted. Admin will review your details and match score.');
+            redirect('claims/track.php');
+        } catch (Throwable $e) {
+            $error = $e->getMessage();
+        }
+    }
+}
+
+include __DIR__ . '/../includes/header.php';
+?>
+<div class="grid lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 section-card p-6">
+        <h1 class="text-3xl font-bold mb-2">Submit Claim</h1>
+        <p class="text-slate-400 mb-6">Add precise details so the match score is higher for the admin.</p>
+
+        <?php if ($error): ?>
+            <div class="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300">
+                <?= e($error) ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" class="grid md:grid-cols-2 gap-4">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+
+            <div>
+                <label class="block mb-2 text-sm font-medium">Claimed Brand</label>
+                <input class="input" name="claimed_brand">
+            </div>
+            <div>
+                <label class="block mb-2 text-sm font-medium">Claimed Color</label>
+                <input class="input" name="claimed_color">
+            </div>
+            <div>
+                <label class="block mb-2 text-sm font-medium">Claimed Serial / ID</label>
+                <input class="input" name="claimed_serial">
+            </div>
+            <div>
+                <label class="block mb-2 text-sm font-medium">Claimed Date</label>
+                <input class="input" type="date" name="claimed_date">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block mb-2 text-sm font-medium">Claimed Location</label>
+                <input class="input" name="claimed_location">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block mb-2 text-sm font-medium">Identifying Marks</label>
+                <textarea class="textarea" name="identifying_marks" rows="3"></textarea>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block mb-2 text-sm font-medium">Claim Details *</label>
+                <textarea class="textarea" name="claim_details" rows="5" required></textarea>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block mb-2 text-sm font-medium">Additional Proof</label>
+                <textarea class="textarea" name="proof_docs" rows="3"></textarea>
+            </div>
+            <div class="md:col-span-2">
+                <button class="btn btn-primary">Submit Claim</button>
+            </div>
+        </form>
     </div>
 
-    <div class="bg-card border border-gray-800 rounded-2xl p-6">
-      <div class="font-bold">Tips for approval</div>
-      <ul class="mt-4 text-sm text-gray-400 space-y-2">
-        <li><i class="fa-solid fa-check text-success mr-2"></i>Describe contents accurately</li>
-        <li><i class="fa-solid fa-check text-success mr-2"></i>Match date/location details</li>
-      </ul>
+    <div class="section-card p-6">
+        <h2 class="text-xl font-bold mb-3">Item Summary</h2>
+        <div class="font-semibold text-lg"><?= e($item['title']) ?></div>
+        <div class="text-slate-400 text-sm mt-2">
+            <?= e($item['location']) ?> • <?= e(date('M d, Y', strtotime($item['date_lost_found']))) ?>
+        </div>
+        <div class="detail-box mt-4">
+            <div class="text-slate-400 text-sm mb-2">Stored description</div>
+            <p class="text-sm text-slate-200"><?= e($item['description']) ?></p>
+        </div>
     </div>
-  </div>
 </div>
-
+<?php include __DIR__ . '/../includes/footer.php'; ?>
