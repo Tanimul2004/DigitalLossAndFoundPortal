@@ -1,227 +1,199 @@
 <?php
-$pageTitle = "Report Item";
+$pageTitle = 'Report Item';
 require_once __DIR__ . '/../includes/functions.php';
-if (!isLoggedIn()) redirect('public/login.php');
+requireLogin();
+
+$error = '';
+$selectedType = $_POST['type'] ?? ($_GET['type'] ?? 'lost');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  if (!csrf_validate($_POST['csrf'] ?? null)) {
-    flash_set('error', 'Security check failed.');
-    redirect('items/report.php');
-  }
+    if (!verify_csrf($_POST['csrf_token'] ?? null)) {
+        $error = 'Invalid request.';
+    } else {
+        $data = [
+            'type' => sanitize($_POST['type'] ?? ''),
+            'title' => sanitize($_POST['title'] ?? ''),
+            'description' => sanitize($_POST['description'] ?? ''),
+            'category' => sanitize($_POST['category'] ?? ''),
+            'brand' => sanitize($_POST['brand'] ?? ''),
+            'color' => sanitize($_POST['color'] ?? ''),
+            'serial_number' => sanitize($_POST['serial_number'] ?? ''),
+            'unique_marks' => sanitize($_POST['unique_marks'] ?? ''),
+            'location' => sanitize($_POST['location'] ?? ''),
+            'latitude' => sanitize($_POST['latitude'] ?? ''),
+            'longitude' => sanitize($_POST['longitude'] ?? ''),
+            'date_lost_found' => sanitize($_POST['date_lost_found'] ?? ''),
+            'user_id' => (int) $_SESSION['user_id'],
+            'status' => 'pending',
+        ];
 
-  $type = sanitize($_POST['type'] ?? '');
-  $title = sanitize($_POST['title'] ?? '');
-  $description = sanitize($_POST['description'] ?? '');
-  $category = sanitize($_POST['category'] ?? '');
-  $location = sanitize($_POST['location'] ?? '');
-  $date = sanitize($_POST['date_lost_found'] ?? '');
-
-  if (!in_array($type, ['lost','found'], true)) {
-    flash_set('error', 'Invalid item type.');
-  } elseif ($title==='' || $description==='' || $location==='' || $date==='') {
-    flash_set('error', 'Please fill all required fields.');
-  } else {
-    $image = null;
-    if (!empty($_FILES['image']['name'])) {
-      $up = upload_image($_FILES['image']);
-      if (!$up['ok']) {
-        flash_set('error', $up['error']);
-        redirect('items/report.php');
-      }
-      $image = $up['filename'];
+        if (
+            !in_array($data['type'], ['lost', 'found'], true)
+            || $data['title'] === ''
+            || $data['description'] === ''
+            || $data['location'] === ''
+            || $data['date_lost_found'] === ''
+        ) {
+            $error = 'Please fill all required fields.';
+        } else {
+            try {
+                $data['image'] = uploadImage($_FILES['image'] ?? []);
+                createItem($data);
+                flash('success', 'Item reported successfully. It is waiting for admin approval.');
+                redirect('public/dashboard.php');
+            } catch (Throwable $e) {
+                $error = $e->getMessage();
+            }
+        }
     }
-
-    item_create([
-      'type' => $type,
-      'title' => $title,
-      'description' => $description,
-      'category' => $category,
-      'location' => $location,
-      'date_lost_found' => $date,
-      'image' => $image,
-      'user_id' => (int)$_SESSION['user_id'],
-      'status' => 'pending'
-    ]);
-
-    flash_set('success', 'Item submitted. Admin will review before it becomes public.');
-    redirect('public/dashboard.php');
-  }
 }
 
 include __DIR__ . '/../includes/header.php';
 ?>
-<div class="max-w-4xl mx-auto">
-  <div class="flex items-end justify-between gap-4 flex-wrap">
-    <div>
-      <h1 class="text-3xl font-extrabold">Report an Item</h1>
-      <p class="text-gray-400 mt-1">Lost or found something? Submit details (optional photo).</p>
-    </div>
-    <a class="text-gray-400 hover:text-gray-200" href="<?= BASE_URL ?>public/dashboard.php"><i class="fa-solid fa-arrow-left mr-2"></i>Dashboard</a>
-  </div>
-
-  <div class="mt-6 bg-card border border-gray-800 rounded-2xl p-7">
-    <form method="post" enctype="multipart/form-data" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>" />
-
-      <div class="space-y-4">
-        <div>
-          <div class="text-sm text-gray-300 mb-2">Type *</div>
-          <div class="flex gap-3">
-            <label class="flex items-center gap-2 bg-gray-800/50 border border-gray-800 rounded-xl px-4 py-3 cursor-pointer">
-              <input type="radio" name="type" value="lost" checked />
-              <span class="text-red-300"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Lost</span>
-            </label>
-            <label class="flex items-center gap-2 bg-gray-800/50 border border-gray-800 rounded-xl px-4 py-3 cursor-pointer">
-              <input type="radio" name="type" value="found" />
-              <span class="text-emerald-300"><i class="fa-solid fa-magnifying-glass mr-2"></i>Found</span>
-            </label>
-          </div>
-        </div>
-
-        <div>
-          <label class="text-sm text-gray-300">Title *</label>
-          <input name="title" required placeholder="e.g., iPhone 13, Wallet, ID Card"
-                 class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:border-primary" />
-        </div>
-
-        <div>
-          <label class="text-sm text-gray-300">Category</label>
-          <select name="category" class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:border-primary">
-            <option value="">Select</option>
-            <option value="electronics">Electronics</option>
-            <option value="documents">Documents</option>
-            <option value="jewelry">Jewelry</option>
-            <option value="clothing">Clothing</option>
-            <option value="bags">Bags & Wallets</option>
-            <option value="keys">Keys</option>
-            <option value="books">Books</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="text-sm text-gray-300">Location *</label>
-          <input id="locationInput" name="location" required placeholder="e.g., Library, Cafeteria, Block A"
-                 class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:border-primary" />
-          <div class="mt-2 flex flex-wrap items-center gap-3">
-            <button type="button" id="toggleMap" class="text-sm px-3 py-2 rounded-xl glass border border-white/10 hover:bg-white/5">
-              <i class="fa-solid fa-location-crosshairs mr-2 text-primary"></i>Choose on map (optional)
-            </button>
-            <span class="text-xs text-gray-400">Tip: click on the map to pick a spot and auto-fill location.</span>
-          </div>
-
-          <div id="mapWrap" class="mt-4 hidden">
-            <div class="glass border border-white/10 rounded-2xl p-3">
-              <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
-                <div class="text-sm text-gray-300 font-semibold">Pick location</div>
-                <button type="button" id="useMyLocation" class="text-sm px-3 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10">
-                  <i class="fa-solid fa-crosshairs mr-2"></i>Use my current location
-                </button>
-              </div>
-              <div id="map" class="w-full rounded-2xl overflow-hidden" style="height: 260px;"></div>
-              <p class="text-xs text-gray-500 mt-3">Map uses OpenStreetMap (no API key). You can still type location manually.</p>
+<div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+    <form id="report-form" method="post" enctype="multipart/form-data" class="xl:col-span-3 section-card p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-6 reveal">
+        <div class="md:col-span-2 flex items-center justify-between flex-wrap gap-3">
+            <div>
+                <h1 class="text-3xl font-bold mb-2">Report an Item</h1>
+                <p class="text-slate-400">Structured form with Google-style location picker and image preview.</p>
             </div>
-          </div>
+            <span class="badge bg-blue-500/15 text-blue-300 border border-blue-500/20">Admin approval required</span>
         </div>
-      </div>
 
-      <div class="space-y-4">
+        <?php if ($error): ?>
+            <div class="md:col-span-2 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300">
+                <?= e($error) ?>
+            </div>
+        <?php endif; ?>
+
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" id="latitude" name="latitude" value="<?= e($_POST['latitude'] ?? '') ?>">
+        <input type="hidden" id="longitude" name="longitude" value="<?= e($_POST['longitude'] ?? '') ?>">
+
+        <div class="md:col-span-2">
+            <label class="block mb-3 text-sm font-medium">Item Type *</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label class="radio-card <?= $selectedType === 'lost' ? 'active' : '' ?>" data-radio-card>
+                    <input type="radio" name="type" value="lost" <?= $selectedType === 'lost' ? 'checked' : '' ?>>
+                    <div class="font-semibold text-lg text-red-300 mb-1">
+                        <i class="fa-solid fa-circle-minus mr-2"></i>Lost Item
+                    </div>
+                    <div class="text-sm text-slate-400">Post an item you lost so others can help identify it.</div>
+                </label>
+
+                <label class="radio-card <?= $selectedType === 'found' ? 'active' : '' ?>" data-radio-card>
+                    <input type="radio" name="type" value="found" <?= $selectedType === 'found' ? 'checked' : '' ?>>
+                    <div class="font-semibold text-lg text-emerald-300 mb-1">
+                        <i class="fa-solid fa-circle-plus mr-2"></i>Found Item
+                    </div>
+                    <div class="text-sm text-slate-400">Post an item you discovered so the rightful owner can claim it.</div>
+                </label>
+            </div>
+        </div>
+
         <div>
-          <label class="text-sm text-gray-300">Date *</label>
-          <input name="date_lost_found" type="date" required
-                 class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:border-primary" />
+            <label class="block mb-2 text-sm font-medium">Item Title *</label>
+            <input class="input" name="title" value="<?= e($_POST['title'] ?? '') ?>" required>
         </div>
 
         <div>
-          <label class="text-sm text-gray-300">Description *</label>
-          <textarea name="description" required rows="7"
-                    placeholder="Color, brand, unique marks, serial number, contents…"
-                    class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 focus:border-primary"></textarea>
+            <label class="block mb-2 text-sm font-medium">Category</label>
+            <select class="select" name="category">
+                <option value="">Select category</option>
+                <?php foreach (categories() as $key => $label): ?>
+                    <option value="<?= e($key) ?>" <?= ($_POST['category'] ?? '') === $key ? 'selected' : '' ?>>
+                        <?= e($label) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
         </div>
 
         <div>
-          <label class="text-sm text-gray-300">Photo (optional)</label>
-          <input name="image" type="file" accept="image/*"
-                 class="mt-2 w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3" />
-          <p class="text-xs text-gray-500 mt-2">Max 5MB • JPG/PNG/GIF/WEBP</p>
+            <label class="block mb-2 text-sm font-medium">Brand</label>
+            <input class="input" name="brand" value="<?= e($_POST['brand'] ?? '') ?>">
         </div>
 
-        <button class="w-full bg-primary hover:bg-blue-700 font-semibold py-3 rounded-xl">
-          <i class="fa-solid fa-paper-plane mr-2"></i>Submit for Review
-        </button>
-      </div>
+        <div>
+            <label class="block mb-2 text-sm font-medium">Color</label>
+            <input class="input" name="color" value="<?= e($_POST['color'] ?? '') ?>">
+        </div>
+
+        <div>
+            <label class="block mb-2 text-sm font-medium">Serial / ID Number</label>
+            <input class="input" name="serial_number" value="<?= e($_POST['serial_number'] ?? '') ?>">
+        </div>
+
+        <div>
+            <label class="block mb-2 text-sm font-medium">Date *</label>
+            <input class="input" type="date" name="date_lost_found" value="<?= e($_POST['date_lost_found'] ?? date('Y-m-d')) ?>" required>
+        </div>
+
+        <div class="md:col-span-2">
+            <label class="block mb-2 text-sm font-medium">Location Label *</label>
+            <input class="input" id="location" name="location" value="<?= e($_POST['location'] ?? '') ?>" required>
+        </div>
+
+        <div class="md:col-span-2">
+            <label class="block mb-2 text-sm font-medium">Description *</label>
+            <textarea class="textarea" name="description" rows="5" required><?= e($_POST['description'] ?? '') ?></textarea>
+        </div>
+
+        <div class="md:col-span-2">
+            <label class="block mb-2 text-sm font-medium">Unique Marks</label>
+            <textarea class="textarea" name="unique_marks" rows="3"><?= e($_POST['unique_marks'] ?? '') ?></textarea>
+        </div>
+
+        <div class="md:col-span-2">
+            <label class="block mb-2 text-sm font-medium">Selected Coordinates</label>
+            <div class="flex gap-3 flex-wrap">
+                <input class="input flex-1 min-w-[220px]" id="selected-coordinates" type="text" readonly placeholder="Pick a point from the map">
+                <a id="google-maps-link" href="https://www.google.com/maps" target="_blank" rel="noopener" class="btn btn-glass whitespace-nowrap">Open in Google Maps</a>
+            </div>
+        </div>
+
+        <div class="md:col-span-2 flex justify-between gap-4 flex-wrap border-t border-slate-800 pt-6">
+            <a href="<?= base_url('public/dashboard.php') ?>" class="btn btn-secondary">Back to Dashboard</a>
+            <button class="btn btn-primary btn-lg">Submit Report</button>
+        </div>
     </form>
-  </div>
+
+    <div class="xl:col-span-2 reveal">
+        <div class="map-card p-4 md:p-5 h-full flex flex-col gap-5">
+            <div>
+                <h2 class="font-semibold text-lg">Location &amp; Image Tools</h2>
+                <p class="text-sm text-slate-400 mt-1">
+                    On desktop and laptop, the location picker and image upload preview stay together in one side column.
+                </p>
+            </div>
+
+            <div>
+                <div class="flex items-center justify-between gap-4 mb-3 flex-wrap">
+                    <div>
+                        <h3 class="font-semibold text-base">Google-style Location Picker</h3>
+                        <p class="text-sm text-slate-400">Click map to select coordinates and create a Google Maps shortcut.</p>
+                    </div>
+                    <button type="button" id="use-current-location" class="btn btn-secondary btn-sm">Use My Location</button>
+                </div>
+                <div id="item-map" class="map-canvas"></div>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-base mb-3">Image Upload with Preview</h3>
+                <label class="upload-dropzone" for="image">
+                    <input id="image" class="sr-only" type="file" name="image" accept="image/*" form="report-form">
+                    <div class="text-center pointer-events-none">
+                        <div class="upload-icon">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <div class="font-semibold text-white mb-1">Drop image here or click to browse</div>
+                        <div class="text-sm text-slate-400">JPG, PNG, GIF or WEBP · Max 5MB</div>
+                    </div>
+                </label>
+                <div id="preview-wrap" class="hidden mt-4">
+                    <img id="preview" class="w-full h-72 object-cover rounded-2xl border border-slate-800" alt="Preview">
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
-
-<!-- Leaflet (OpenStreetMap) for optional location picking -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
-<script>
-  (function(){
-    const toggleBtn = document.getElementById('toggleMap');
-    const mapWrap = document.getElementById('mapWrap');
-    const locInput = document.getElementById('locationInput');
-    const myLocBtn = document.getElementById('useMyLocation');
-
-    let map, marker;
-
-    function ensureMap(){
-      if (map) return;
-      map = L.map('map', { scrollWheelZoom: false }).setView([23.8103, 90.4125], 12); // Dhaka default
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
-
-      map.on('click', async (e) => {
-        const { lat, lng } = e.latlng;
-        if (!marker) marker = L.marker([lat, lng]).addTo(map);
-        marker.setLatLng([lat, lng]);
-        map.panTo([lat, lng]);
-
-        // Try reverse geocoding (optional). If it fails, fall back to coordinates.
-        try {
-          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
-          const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-          if (!res.ok) throw new Error('Reverse geocode failed');
-          const data = await res.json();
-          locInput.value = data.display_name ? data.display_name : `Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}`;
-        } catch (err) {
-          locInput.value = `Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}`;
-        }
-      });
-    }
-
-    toggleBtn?.addEventListener('click', () => {
-      mapWrap.classList.toggle('hidden');
-      if (!mapWrap.classList.contains('hidden')) {
-        ensureMap();
-        setTimeout(() => map.invalidateSize(), 50);
-      }
-    });
-
-    myLocBtn?.addEventListener('click', () => {
-      if (!navigator.geolocation) {
-        alert('Geolocation is not supported by your browser.');
-        return;
-      }
-      mapWrap.classList.remove('hidden');
-      ensureMap();
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          map.setView([lat, lng], 16);
-          if (!marker) marker = L.marker([lat, lng]).addTo(map);
-          marker.setLatLng([lat, lng]);
-          map.invalidateSize();
-        },
-        () => alert('Could not get your location. Please allow location permission or click on the map.')
-      );
-    });
-  })();
-</script>
-
 <?php include __DIR__ . '/../includes/footer.php'; ?>
